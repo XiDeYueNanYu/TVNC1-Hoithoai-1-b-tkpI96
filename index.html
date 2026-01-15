@@ -705,20 +705,21 @@ const dictionary = {
 "nhẹ": "轻",
 "dễ": "容易",
 "rẻ": "便宜",
+"Thế còn":"那还有",
 "chỗ ở": "住处",
 "khó": "难",
 "tìm": "找",
 "gần": "附近",
-"Viện": "院",
+"Viện": "学院",
 "khách sạn": "酒店",
 "thuê": "租",
 "đưa": "给",
 "địa chỉ": "地址",
 "hoặc": "或者",
-"cứ": "就",
+"cứ": "尽管",
 "liên hệ": "联系",
 "đắt": "贵",
-"tùy": "看",
+"tùy": "要看【随】",
 "nếu": "如果",
 "cùng": "一起",
 "gia đình": "家庭",
@@ -726,6 +727,7 @@ const dictionary = {
 "muốn": "想",
 "tiện": "方便",
 "miễn": "免",
+"Thế thì":"那(就）",
 "thị thực": "签证",
 "thủ tục": "手续",
 "sớm": "早",
@@ -745,9 +747,10 @@ const quizData = [
 { question: "Lauren chúc David may mắn.", correct: true }
 ];
 
-        let currentDialogueIndex = 0;
+let currentDialogueIndex = 0;
         let dialogueElements = [];
         let userSelections = {};
+        let lastScrollPosition = 0; // Lưu vị trí cuộn
 
         function renderText(rawText) {
             let lines = rawText.trim().split('\n');
@@ -809,37 +812,40 @@ const quizData = [
             });
         }
 
-        function applyDictionary(text) {
-            const keys = Object.keys(dictionary).sort((a, b) => b.length - a.length);
-            let result = text;
-            const placeholders = [];
+function applyDictionary(text) {
+    // Sắp xếp từ dài đến ngắn để ưu tiên cụm từ trước
+    const keys = Object.keys(dictionary).sort((a, b) => b.length - a.length);
+    
+    let result = text;
 
-            keys.forEach((key, index) => {
-                const parts = key.split('@');
-                const mainWord = parts[0]; 
-                const context = parts.length > 1 ? parts[1] : "";
-                
-                const fullSearchTerm = mainWord + context;
-                const regex = new RegExp(fullSearchTerm, 'g');
-                const placeholder = `___PH_${index}___`;
-                
-                if (result.includes(fullSearchTerm)) {
-                    const htmlContent = `
-                        <span class="translated-word">
-                            <span class="annotation-top">${dictionary[key]}</span>${mainWord}
-                        </span>${context}`;
-                    
-                    placeholders.push({ id: placeholder, content: htmlContent });
-                    result = result.replace(regex, placeholder);
-                }
-            });
+    keys.forEach((key) => {
+        const parts = key.split('@');
+        const mainWord = parts[0]; 
+        const context = parts.length > 1 ? parts[1] : "";
+        const fullSearchTerm = mainWord + context;
 
-            placeholders.forEach(ph => {
-                result = result.replace(new RegExp(ph.id, 'g'), ph.content);
-            });
+        // Sử dụng Regex với Lookbehind và Lookahead để đảm bảo là một từ trọn vẹn
+        // (?<!\w): Không có ký tự chữ cái nào đứng trước
+        // (?!\w): Không có ký tự chữ cái nào đứng sau
+        // Lưu ý: Với tiếng Việt có dấu, ta nên dùng ranh giới khoảng trắng hoặc dấu câu
+        const escapedTerm = fullSearchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        
+        // Regex này đảm bảo từ phải đứng độc lập (không nằm trong từ khác)
+        const regex = new RegExp(`(?<![a-zA-ZÀ-ỹ])${escapedTerm}(?![a-zA-ZÀ-ỹ])`, 'g');
 
-            return result;
-        }
+        const htmlReplacement = `
+            <span class="translated-word">
+                <span class="annotation-top">${dictionary[key]}</span>${mainWord}
+            </span>${context}`;
+
+        // Kiểm tra nếu từ này chưa được bao bọc bởi thẻ HTML nào khác
+        result = result.replace(regex, (match) => {
+            return htmlReplacement;
+        });
+    });
+
+    return result;
+}
 
         const audioPlayer = document.getElementById("audioPlayer");
         const timeDisplay = document.getElementById("timeDisplay");
@@ -1062,20 +1068,11 @@ const quizData = [
 
             const resultDiv = document.getElementById('result');
             resultDiv.style.display = 'block';
-            resultDiv.innerHTML = `<h3>结果: ${score}/${total} 正确 (${(score/total * 100).toFixed(2)}%)</h3>`;
+            resultDiv.innerHTML = `<h3>结果: ${score}/${total} 正ực (${(score/total * 100).toFixed(2)}%)</h3>`;
 
                                                 if (wrongAnswers.length === 0) {
                                 resultDiv.innerHTML += '<p style="color:#007a33; font-size:22px;">恭喜！全部正确！</p>';
-                        } /* else {
-                                resultDiv.innerHTML += '<h4 style="color:#f65936;">错题回顾:</h4>';
-                                wrongAnswers.forEach(wrong => {
-                                        resultDiv.innerHTML += `
-                                                <div class="wrong-answer">
-                                                        第 ${wrong.num} 题: ${wrong.content}<br>
-                                                        你的选择: <strong>${wrong.user}</strong> → 正确答案: <strong>${wrong.correct}</strong>
-                                                </div>`;
-                                });
-                        } */
+                        } 
 
             resultDiv.scrollIntoView({ behavior: 'smooth' });
         }
@@ -1091,9 +1088,19 @@ const quizData = [
             floatingControls.style.display = 'block';
             dialogueModeButton.classList.add('active');
             quizModeButton.classList.remove('active');
+            
+            // Khôi phục vị trí cuộn
+            setTimeout(() => {
+                window.scrollTo({
+                    top: lastScrollPosition,
+                    behavior: 'instant'
+                });
+            }, 0);
         });
 
         quizModeButton.addEventListener('click', () => {
+            lastScrollPosition = window.scrollY; // Lưu vị trí hiện tại trước khi chuyển
+            
             dialogueContainer.style.display = 'none';
             quizContainer.style.display = 'block';
             floatingControls.style.display = 'none';
@@ -1102,6 +1109,7 @@ const quizData = [
             dialogueModeButton.classList.remove('active');
             loadQuiz();
             document.getElementById('result').style.display = 'none';
+            window.scrollTo(0, 0); // Lên đầu trang cho phần Quiz
         });
 
         document.getElementById('submitQuiz').addEventListener('click', checkAnswers);
